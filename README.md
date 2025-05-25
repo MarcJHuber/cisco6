@@ -2,9 +2,9 @@
 
 The code here is largely based on information found in
 
-    https://github.com/CiscoDevNet/Type-6-Password-Encode/
+https://github.com/CiscoDevNet/Type-6-Password-Encode/
 
-and this is basically a decode-only C variant of the encode6.py found there.
+and is is basically a decode-only C variant of the encode6.py you'll find there.
 
 ## Compile:
 ```
