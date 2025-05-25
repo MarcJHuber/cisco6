@@ -6,15 +6,14 @@ The code here is largely based on information found in
 
 and this is basically a decode-only C variant of the encode6.py found there.
 
-## Usage:
-```
-decrypt_type6 <master_key> <encrypted_password>
-```
 ## Compile:
 ```
 cc -std=c99 -o decrypt_type6 decrypt_type6.c -lcrypto
 ```
-
+## Usage:
+```
+decrypt_type6 <master_key> <encrypted_password>
+```
 ## Sample usage:
 ```
 # ./decrypt_type6 'mySecretMasterkey' 'XOUDEUYHeLGdB`UAZKX\GK[iEgCWMZXEXN^dTGZ[UAAAB'
