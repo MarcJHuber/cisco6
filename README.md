@@ -4,7 +4,7 @@ The code here is largely based on information found in
 
 https://github.com/CiscoDevNet/Type-6-Password-Encode/
 
-and is is basically a decode-only C variant of the encode6.py you'll find there.
+and it's basically a decode-only C variant of the encode6.py you'll find there.
 
 ## Compile:
 ```
