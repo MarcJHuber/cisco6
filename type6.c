@@ -1,15 +1,17 @@
 //
-// Type 6 decoder, largely based on information found in
+// Type 6 encoder/decoder, largely based on information found in
 //
 //   https://github.com/CiscoDevNet/Type-6-Password-Encode/
 //
-// This is basically a decode-only C variant of the encode6.py found there.
+// This is basically a C variant of the encode6.py found there.
 //
 // Usage:
-//   decrypt_type6 <master_key> <encrypted_password>
+//   type6 <master_key> <encrypted_password>
 //
 // Compile:
-//   cc -std=c99 -o decrypt_type6 decrypt_type6.c -lcrypto
+//   cc -std=c99 -o type6 type6.c -lcrypto
+//   ln -s type6 decrypt_type6
+//   ln -s type6 encrypt_type6
 //
 
 #include <stdio.h>
@@ -19,6 +21,7 @@
 #include <unistd.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
+#include <openssl/rand.h>
 #if OPENSSL_VERSION_NUMBER < 0x30000000
 #include <openssl/md5.h>
 #include <openssl/aes.h>
@@ -27,18 +30,36 @@
 #define TYPE6_SALT_LEN 8
 #define TYPE6_MAC_LEN 4
 
-static __inline__ int base41_decode_block(const char *in, uint8_t *out)
+static __inline__ int base41_decode_block(const char *in, uint8_t out[2])
 {
     int val = 0;
     for (int i = 0; i < 3; i++) {
 	if (in[i] < 'A')
-		return -1;
+	    return -1;
 	val *= 41;
 	val += in[i] - 'A';
     }
     out[0] = (val >> 8) & 0xFF;
     out[1] = val & 0xFF;
     return 0;
+}
+
+static __inline__ void base41_encode_two_bytes(const uint8_t *in, char out[4])
+{
+    uint32_t number = ((uint32_t) in[0] << 8) | in[1];
+
+    uint32_t z = number % 41;
+    number /= 41;
+    uint32_t y = number % 41;
+    number /= 41;
+    uint32_t x = number;
+
+    static const char b41[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghi";
+
+    out[0] = b41[x];
+    out[1] = b41[y];
+    out[2] = b41[z];
+    out[3] = '\0';
 }
 
 static __inline__ int base41_decode(const char *in, uint8_t *out, size_t *out_len)
@@ -63,6 +84,42 @@ static __inline__ int base41_decode(const char *in, uint8_t *out, size_t *out_le
     *out_len = j;
     return 0;
 }
+
+static __inline__ char *b41_encode(const uint8_t *data, size_t len)
+{
+    size_t out_len = ((len + 1) / 2 + 1) * 3 + 1;
+    char *out = malloc(out_len);
+    out[0] = '\0';
+
+    char block[4];
+
+    for (size_t i = 0; i < len; i += 2) {
+	uint8_t pair[2];
+	if (i + 1 < len) {
+	    pair[0] = data[i];
+	    pair[1] = data[i + 1];
+	} else {
+	    pair[0] = data[i];
+	    pair[1] = 0x00;
+	}
+	base41_encode_two_bytes(pair, block);
+	strcat(out, block);
+    }
+
+    uint8_t pad[2];
+    if (len % 2 == 1) {
+	pad[0] = data[len - 1];
+	pad[1] = 0x00;
+    } else {
+	pad[0] = 0x00;
+	pad[1] = 0x01;
+    }
+    base41_encode_two_bytes(pad, block);
+    strcat(out, block);
+
+    return out;
+}
+
 
 static void calculate_md5(const char *input, uint8_t *output)
 {
@@ -128,19 +185,10 @@ static int verify_mac(const uint8_t *data, size_t data_len, const char *master_k
     return memcmp(digest, mac, TYPE6_MAC_LEN);
 }
 
-static char *decrypt_type6(const char *encoded, const char *master_key)
+static void aes_xor(const char *master_key, const uint8_t salt[TYPE6_SALT_LEN], size_t len, char *out, const char *buf)
 {
-    uint8_t decoded[1024];
     uint8_t md5_digest[16];
-    size_t decoded_len = 0;
-
-    if (base41_decode(encoded, decoded, &decoded_len) || verify_mac(decoded, decoded_len, master_key))
-	return NULL;
     calculate_md5(master_key, md5_digest);
-
-    const uint8_t *salt = decoded;
-    size_t enc_len = decoded_len - TYPE6_SALT_LEN - TYPE6_MAC_LEN;
-    const uint8_t *encrypted_password = decoded + TYPE6_SALT_LEN;
 
     uint8_t ke_input[16] = { 0 };
     memcpy(ke_input, salt, TYPE6_SALT_LEN);
@@ -158,14 +206,10 @@ static char *decrypt_type6(const char *encoded, const char *master_key)
     EVP_CIPHER_CTX_set_padding(ctx, 0);
 #endif
 
-    char *output = malloc(enc_len + 1);
-    if (!output)
-	return NULL;
-
     uint8_t ke_block[16] = { 0 };
 
-    for (size_t i = 0; i < enc_len; ++i) {
-	if (i % 16 == 0) {
+    for (size_t i = 0; i < len; i++) {
+	if ((i % 16) == 0) {
 	    uint8_t counter_block[16] = { 0 };
 	    counter_block[3] = (uint8_t) (i / 16);
 #if OPENSSL_VERSION_NUMBER < 0x30000000
@@ -175,15 +219,68 @@ static char *decrypt_type6(const char *encoded, const char *master_key)
 	    EVP_EncryptUpdate(ctx, ke_block, &out_len, counter_block, 16);
 #endif
 	}
-	output[i] = encrypted_password[i] ^ ke_block[i % 16];
+	out[i] = buf[i] ^ ke_block[i % 16];
     }
-
-    output[enc_len] = 0;
-
 #if OPENSSL_VERSION_NUMBER >= 0x30000000
     EVP_CIPHER_CTX_free(ctx);
 #endif
+}
+
+static char *decrypt_type6(const char *encoded, const char *master_key)
+{
+    uint8_t decoded[strlen(encoded)];
+    size_t decoded_len = 0;
+
+    if (base41_decode(encoded, decoded, &decoded_len) || verify_mac(decoded, decoded_len, master_key))
+	return NULL;
+
+    size_t len = decoded_len - TYPE6_SALT_LEN - TYPE6_MAC_LEN;
+    char *output = malloc(len + 1);
+    if (!output)
+	return NULL;
+
+    aes_xor(master_key, decoded, len, output, decoded + TYPE6_SALT_LEN);
+
+    output[len] = 0;
+
     return output;
+}
+
+static char *encrypt_type6(const char *cleartext, const char *master_key)
+{
+    size_t len = strlen(cleartext);
+
+    uint8_t enc[len];
+
+    uint8_t salt[TYPE6_SALT_LEN];
+    RAND_bytes(salt, TYPE6_SALT_LEN);
+
+    aes_xor(master_key, salt, len, enc, cleartext);
+
+    uint8_t md5_digest[16];
+    calculate_md5(master_key, md5_digest);
+
+    uint8_t ka_input[16] = { 0 };
+    memcpy(ka_input, salt, TYPE6_SALT_LEN);
+
+    uint8_t ka[16];
+    aes_ecb_encrypt(md5_digest, ka_input, ka);
+
+    unsigned int hmac_len;
+    uint8_t *digest = HMAC(EVP_sha1(), ka, 16, enc, len, NULL, &hmac_len);
+    if (digest) {
+        uint8_t mac[TYPE6_MAC_LEN];
+	memcpy(mac, digest, TYPE6_MAC_LEN);
+
+	uint8_t final[TYPE6_SALT_LEN + len + TYPE6_MAC_LEN];
+	memcpy(final, salt, TYPE6_SALT_LEN);
+	memcpy(final + TYPE6_SALT_LEN, enc, len);
+	memcpy(final + TYPE6_SALT_LEN + len, mac, TYPE6_MAC_LEN);
+
+	char *encoded = b41_encode(final, TYPE6_SALT_LEN + len + TYPE6_MAC_LEN);
+	return encoded;
+    }
+    return NULL;
 }
 
 int main(int argc, char **argv)
@@ -192,22 +289,48 @@ int main(int argc, char **argv)
     char *master_key_dflt = "mySecretMasterkey";
     char *enc_pass = enc_pass_dflt;
     char *master_key = master_key_dflt;
+    int decrypt = !strstr(argv[0], "decode") && !strstr(argv[0], "decrypt");
+
+    if (argc == 4) {
+	if (!strcmp(argv[1], "-d")) {
+	    decrypt = 1;
+	    argc--;
+	    argv++;
+	} else if (!strcmp(argv[1], "-e")) {
+	    decrypt = 0;
+	    argc--;
+	    argv++;
+	} else
+	    decrypt = 1;
+    }
 
     if (argc == 3) {
 	master_key = argv[1];
 	enc_pass = argv[2];
     } else {
-	printf("Usage: %s <master_key> <encrypted_password>\n", argv[0]);
-	printf("Example:\n# %s '%s' '%s'\n", argv[0], master_key_dflt, enc_pass_dflt);
+	printf("Usage:\n");
+	printf(" Decryption: %s -d <master_key> <encrypted_password>\n", argv[0]);
+	printf(" Encryption: %s -e <master_key> <cleartext_password>\n", argv[0]);
+	printf("Example:\n");
+	printf(" # %s -d '%s' '%s'\n", argv[0], master_key_dflt, enc_pass_dflt);
     }
 
-    char *decrypted = decrypt_type6(enc_pass, master_key);
-    if (decrypted) {
-	printf("Decrypted password: '%s'\n", decrypted);
-	free(decrypted);
-	exit(0);
+    if (decrypt) {
+	char *decrypted = decrypt_type6(enc_pass, master_key);
+	if (decrypted) {
+	    printf("Decrypted password: '%s'\n", decrypted);
+	    free(decrypted);
+	    exit(0);
+	}
+    } else {
+	char *encrypted = encrypt_type6(enc_pass, master_key);
+	if (encrypted) {
+	    printf("Encrypted password: '%s'\n", encrypted);
+	    free(encrypted);
+	    exit(0);
+	}
     }
 
-    fprintf(stderr, "Decryption failed.\n");
+    fprintf(stderr, "%scryption failed.\n", decrypt ? "De" : "En");
     exit(-1);
 }
