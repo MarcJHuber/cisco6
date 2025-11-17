@@ -17,10 +17,10 @@ ln -s type6 encrypt_type6
 ```
 ## Usage:
 ```
-type6 -d <master_key> <encrypted_password>
-type6 -e <master_key> <cleartext_password>
-decrypt_type6 <master_key> <encrypted_password>
-encrypt_type6 <master_key> <cleartext_password>
+# ./type6 -d <master_key> <encrypted_password>
+# ./type6 -e <master_key> <cleartext_password>
+# ./decrypt_type6 <master_key> <encrypted_password>
+# ./encrypt_type6 <master_key> <cleartext_password>
 ```
 ## Sample usage:
 ```
