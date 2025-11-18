@@ -185,7 +185,7 @@ static int verify_mac(const uint8_t *data, size_t data_len, const char *master_k
     return memcmp(digest, mac, TYPE6_MAC_LEN);
 }
 
-static void aes_xor(const char *master_key, const uint8_t salt[TYPE6_SALT_LEN], size_t len, char *out, const char *buf)
+static void aes_xor(const char *master_key, const uint8_t salt[TYPE6_SALT_LEN], size_t len, uint8_t *out, const uint8_t *buf)
 {
     uint8_t md5_digest[16];
     calculate_md5(master_key, md5_digest);
@@ -255,7 +255,7 @@ static char *encrypt_type6(const char *cleartext, const char *master_key)
     uint8_t salt[TYPE6_SALT_LEN];
     RAND_bytes(salt, TYPE6_SALT_LEN);
 
-    aes_xor(master_key, salt, len, enc, cleartext);
+    aes_xor(master_key, salt, len, enc, (const uint8_t *) cleartext);
 
     uint8_t md5_digest[16];
     calculate_md5(master_key, md5_digest);
@@ -289,7 +289,7 @@ int main(int argc, char **argv)
     char *master_key_dflt = "mySecretMasterkey";
     char *enc_pass = enc_pass_dflt;
     char *master_key = master_key_dflt;
-    int decrypt = !strstr(argv[0], "decode") && !strstr(argv[0], "decrypt");
+    int decrypt = strstr(argv[0], "decode") || strstr(argv[0], "decrypt");
 
     if (argc == 4) {
 	if (!strcmp(argv[1], "-d")) {
