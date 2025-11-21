@@ -1,10 +1,10 @@
-# Type 6 decoder
+# Type 6 encoder/decoder
 
 The code here is largely based on information found in
 
 https://github.com/CiscoDevNet/Type-6-Password-Encode/
 
-and is is basically a C variant of the encode6.py you'll find there.
+and it's basically a C variant of the encode6.py you'll find there.
 
 ## Compile:
 ```
