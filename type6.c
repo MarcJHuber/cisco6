@@ -77,10 +77,10 @@ static __inline__ int base41_decode(const char *in, uint8_t *out, size_t *out_le
 
     if (j < 4)
 	return -1;
-    if (!out[j - 1])
-	j -= 1;
-    else if (out[j - 1] == 1 && !out[j - 2])
+    if (out[j - 1])
 	j -= 2;
+    else
+	j -= 1;
     *out_len = j;
     return 0;
 }
@@ -109,17 +109,14 @@ static __inline__ char *b41_encode(const uint8_t *data, size_t len)
     }
 
     uint8_t pad[2];
-    if (len % 2 == 1) {
-	pad[0] = data[len - 1];
-	pad[1] = 0x00;
-    } else {
+    if (!(len & 1)) {
 	pad[0] = 0x00;
 	pad[1] = 0x01;
-    }
     base41_encode_two_bytes(pad, block);
     *t++ = block[0];
     *t++ = block[1];
     *t++ = block[2];
+    }
     *t = 0;
 
     return out;
@@ -318,6 +315,7 @@ int main(int argc, char **argv)
 	printf(" Encryption: %s -e <master_key> <cleartext_password>\n", argv[0]);
 	printf("Example:\n");
 	printf(" # %s -d '%s' '%s'\n", argv[0], master_key_dflt, enc_pass_dflt);
+	decrypt = 1;
     }
 
     if (decrypt) {
