@@ -26,4 +26,8 @@ ln -s type6 encrypt_type6
 ```
 # ./type6 -d 'mySecretMasterkey' 'XOUDEUYHeLGdB`UAZKX\GK[iEgCWMZXEXN^dTGZ[UAAAB'
 Decrypted password: 'mySecretPassword'
+# ./type6 -e 'mySecretMasterkey' mySecretPassword
+Encrypted password: 'EEZSHGVTieg[VWEXaMCHDEePCPUKBNKKWLYN^^NSi[AAB'
+# ./type6 -d 'mySecretMasterkey' 'EEZSHGVTieg[VWEXaMCHDEePCPUKBNKKWLYN^^NSi[AAB'
+Decrypted password: 'mySecretPassword'
 ```
