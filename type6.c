@@ -243,7 +243,7 @@ static char *encrypt_type6(const char *cleartext, const char *master_key)
 	uint8_t mac[TYPE6_MAC_LEN];
 	memcpy(mac, digest, TYPE6_MAC_LEN);
 
-	size_t pad = (len & 1) ? 0 : 1;
+	size_t pad = ~len & 1;
 	uint8_t final[TYPE6_SALT_LEN + len + TYPE6_MAC_LEN + 1 + pad];
 	memcpy(final, salt, TYPE6_SALT_LEN);
 	memcpy(final + TYPE6_SALT_LEN, enc, len);
